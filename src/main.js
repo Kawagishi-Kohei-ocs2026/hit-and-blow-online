@@ -22,6 +22,7 @@ let room = null        // rooms row
 let guesses = { 1: [], 2: [] }
 let workSlots = [null, null, null, null]
 let channel = null
+let role = 'player' // 'player' | 'spectator'
 
 // ===== SVG ヘルパー =====
 function svgM(c, sz = 40) {
@@ -203,6 +204,16 @@ function renderTurnChip() {
   if (!room) return
   const chip = document.getElementById('turn-chip')
   const inputArea = document.getElementById('input-area')
+
+  // 👀 観戦者
+  if (role === 'spectator') {
+    chip.textContent = '👀 観戦中'
+    chip.className = 'turn-chip wait-turn'
+    inputArea.classList.add('disabled')
+    return
+  }
+
+  // 既存ロジック（そのまま）
   const isMyTurn = room.current_player === myPlayerId && room.status === 'playing'
   const totalTurns = guesses[1].length + guesses[2].length
 
@@ -387,35 +398,50 @@ async function createRoom() {
 
 // ===== ルーム参加 =====
 async function joinRoom(id) {
+  hadTwoPlayers = false
   const guestId = getGuestId()
   roomId = id.toUpperCase()
 
-  const { data: r } = await supabase.from('rooms').select('*').eq('id', roomId).single()
-  if (!r) { showLobbyError('ルームが見つかりません'); return }
-  if (r.status === 'finished') { showLobbyError('このゲームは終了しています'); return }
+  const { data: r } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('id', roomId)
+    .single()
 
-  // player1 本人が再接続した場合
+  if (!r) { showLobbyError('ルームが見つかりません'); return }
+
+  room = r
+
+  // ===== プレイヤー判定 =====
   if (r.player1_id === guestId) {
     myPlayerId = 1
+    role = 'player'
   } else if (r.player2_id === guestId) {
     myPlayerId = 2
+    role = 'player'
   } else if (!r.player2_id) {
-    // 新規参加
+    // 2人目として参加
     myPlayerId = 2
+    role = 'player'
     const { error } = await supabase.from('rooms').update({
       player2_id: guestId,
       status: 'playing',
     }).eq('id', roomId).eq('status', 'waiting')
     if (error) { showLobbyError('参加に失敗しました'); return }
   } else {
-    showLobbyError('このルームは満員です')
-    return
+    // 👀 観戦者
+    role = 'spectator'
+    myPlayerId = null
   }
 
   await loadRoomData()
   showScreen('game')
   renderAll()
   subscribeRoom()
+
+  if (role === 'spectator') {
+    showToast('👀 観戦モードで参加しています')
+  }
 }
 
 function showLobbyError(msg) {
