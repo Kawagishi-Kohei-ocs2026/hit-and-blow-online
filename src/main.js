@@ -316,28 +316,59 @@ function showResult() {
 
 // ===== Supabase Realtime 購読 =====
 function subscribeRoom() {
-  channel = supabase.channel('room:' + roomId)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
-      payload => {
-        room = payload.new
+  channel = supabase.channel('room:' + roomId, {
+    config: {
+      presence: { key: getGuestId() }
+    }
+  })
+
+  // presence 同期
+  channel.on('presence', { event: 'sync' }, () => {
+    const state = channel.presenceState()
+    const count = Object.keys(state).length
+
+    // ゲーム中に1人になったら
+    if (room?.status === 'playing' && count === 1) {
+      showToast('相手が退出しました')
+      setTimeout(() => location.href = '/', 2000)
+    }
+  })
+
+  // rooms の変更
+  channel.on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+    payload => {
+      room = payload.new
+      renderAll()
+
+      if (room.status === 'finished') {
+        setTimeout(showResult, 900)
+      }
+      if (room.status === 'playing') {
+        showScreen('game')
         renderAll()
-        if (room.status === 'finished') {
-          setTimeout(showResult, 900)
-        }
-        // waiting→playing に変わったらゲーム画面に遷移
-        if (room.status === 'playing') {
-          showScreen('game')
-          renderAll()
-        }
-      })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guesses', filter: `room_id=eq.${roomId}` },
-      payload => {
-        const g = payload.new
-        if (!guesses[g.player]) guesses[g.player] = []
-        guesses[g.player].push({ colors: g.colors, hit: g.hit, blow: g.blow })
-        renderAll()
-      })
-    .subscribe()
+      }
+    }
+  )
+
+  // guesses の変更
+  channel.on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'guesses', filter: `room_id=eq.${roomId}` },
+    payload => {
+      const g = payload.new
+      if (!guesses[g.player]) guesses[g.player] = []
+      guesses[g.player].push({ colors: g.colors, hit: g.hit, blow: g.blow })
+      renderAll()
+    }
+  )
+
+  channel.subscribe(async status => {
+    if (status === 'SUBSCRIBED') {
+      await channel.track({ online: true })
+    }
+  })
 }
 
 // ===== 全データ取得（再接続時など） =====
@@ -450,8 +481,10 @@ function init() {
 // ===== イベントバインド（ゲーム画面） =====
 document.getElementById('submit-btn').onclick = submitGuess
 document.getElementById('clear-btn').onclick = clearWork
-document.getElementById('leave-btn').onclick = () => {
-  if (confirm('退出しますか？')) location.href = '/'
+document.getElementById('leave-btn').onclick = async () => {
+  if (!confirm('退出しますか？')) return
+  if (channel) await channel.untrack()
+  location.href = '/'
 }
 
 init()
