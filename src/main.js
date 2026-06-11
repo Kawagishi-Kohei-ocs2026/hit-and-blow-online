@@ -23,6 +23,7 @@ let guesses = { 1: [], 2: [] }
 let workSlots = [null, null, null, null]
 let channel = null
 let role = 'player' // 'player' | 'spectator'
+let hadTwoPlayers = false
 
 // ===== SVG ヘルパー =====
 function svgM(c, sz = 40) {
@@ -264,6 +265,7 @@ function clearWork() {
 
 // ===== 推測送信 =====
 async function submitGuess() {
+  if (role !== 'player') return
   if (workSlots.includes(null) || !room || room.status !== 'playing') return
   if (room.current_player !== myPlayerId) return
 
@@ -327,28 +329,73 @@ function showResult() {
 
 // ===== Supabase Realtime 購読 =====
 function subscribeRoom() {
-  channel = supabase.channel('room:' + roomId)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
-      payload => {
-        room = payload.new
-        renderAll()
-        if (room.status === 'finished') {
-          setTimeout(showResult, 900)
-        }
-        // waiting→playing に変わったらゲーム画面に遷移
-        if (room.status === 'playing') {
-          showScreen('game')
-          renderAll()
-        }
+  channel = supabase.channel('room:' + roomId, {
+    config: {
+      presence: { key: getGuestId() }
+    }
+  })
+
+  // ===== presence =====
+  channel.on('presence', { event: 'sync' }, () => {
+    const state = channel.presenceState()
+
+    const playersOnline = Object.values(state)
+      .flat()
+      .filter(p => p.role === 'player')
+      .length
+
+    if (playersOnline >= 2) {
+      hadTwoPlayers = true
+    }
+
+    if (
+      room?.status === 'playing' &&
+      hadTwoPlayers &&
+      playersOnline === 1
+    ) {
+      showToast('相手が退出しました')
+      setTimeout(() => location.href = '/', 2000)
+    }
+  })
+
+  // ===== rooms changes =====
+  channel.on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
+    payload => {
+      room = payload.new
+      renderAll()
+
+      if (room.status === 'finished') {
+        setTimeout(showResult, 900)
+      }
+      if (room.status === 'playing') {
+        showScreen('game')
+      }
+    }
+  )
+
+  // ===== guesses changes =====
+  channel.on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'guesses', filter: `room_id=eq.${roomId}` },
+    payload => {
+      const g = payload.new
+      if (!guesses[g.player]) guesses[g.player] = []
+      guesses[g.player].push({
+        colors: g.colors,
+        hit: g.hit,
+        blow: g.blow
       })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guesses', filter: `room_id=eq.${roomId}` },
-      payload => {
-        const g = payload.new
-        if (!guesses[g.player]) guesses[g.player] = []
-        guesses[g.player].push({ colors: g.colors, hit: g.hit, blow: g.blow })
-        renderAll()
-      })
-    .subscribe()
+      renderAll()
+    }
+  )
+
+  channel.subscribe(async status => {
+    if (status === 'SUBSCRIBED') {
+      await channel.track({ online: true, role })
+    }
+  })
 }
 
 // ===== 全データ取得（再接続時など） =====
@@ -476,8 +523,10 @@ function init() {
 // ===== イベントバインド（ゲーム画面） =====
 document.getElementById('submit-btn').onclick = submitGuess
 document.getElementById('clear-btn').onclick = clearWork
-document.getElementById('leave-btn').onclick = () => {
-  if (confirm('退出しますか？')) location.href = '/'
+document.getElementById('leave-btn').onclick = async () => {
+  if (!confirm('退出しますか？')) return
+  if (channel) await channel.untrack()
+  location.href = '/'
 }
 
 init()
