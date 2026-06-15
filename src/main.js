@@ -5,13 +5,6 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-// ===== Supabase スキーマ要件 =====
-// rooms テーブルに以下のカラムが必要です（再戦機能用）:
-//   rematch_p1  boolean  default false
-//   rematch_p2  boolean  default false
-// SQL: ALTER TABLE rooms ADD COLUMN rematch_p1 boolean DEFAULT false;
-//      ALTER TABLE rooms ADD COLUMN rematch_p2 boolean DEFAULT false;
-
 // ===== 定数 =====
 const COLORS = [
   { name: '青',    g: ['#6ec6f5', '#1a5fb4'] },
@@ -31,7 +24,6 @@ let workSlots = [null, null, null, null]
 let channel = null
 let role = 'player' // 'player' | 'spectator'
 let hadTwoPlayers = false
-let rematchRequested = false  // 自分が再戦ボタンを押したか
 
 // ===== SVG ヘルパー =====
 function svgM(c, sz = 40) {
@@ -332,66 +324,7 @@ function showResult() {
     ra.appendChild(d)
   })
 
-  // 再戦ボタン初期化
-  rematchRequested = false
-  const rematchBtn = document.getElementById('rematch-btn')
-  const rematchStatus = document.getElementById('rematch-status')
-  rematchBtn.textContent = '🔄 再戦する'
-  rematchBtn.classList.remove('ready')
-  rematchStatus.classList.add('hidden')
-
-  // 観戦者には再戦ボタンを隠す
-  if (role === 'spectator') {
-    document.getElementById('rematch-area').style.display = 'none'
-  } else {
-    document.getElementById('rematch-area').style.display = ''
-    rematchBtn.onclick = requestRematch
-  }
-
   overlay.classList.remove('hidden')
-}
-
-// ===== 再戦リクエスト =====
-async function requestRematch() {
-  if (rematchRequested || role !== 'player') return
-  rematchRequested = true
-
-  const rematchBtn = document.getElementById('rematch-btn')
-  const rematchStatus = document.getElementById('rematch-status')
-  rematchBtn.textContent = '✅ 準備完了！'
-  rematchBtn.classList.add('ready')
-  rematchStatus.classList.remove('hidden')
-
-  const field = myPlayerId === 1 ? 'rematch_p1' : 'rematch_p2'
-  await supabase.from('rooms').update({ [field]: true }).eq('id', roomId)
-}
-
-// ===== 再戦処理（両者準備完了時） =====
-async function startRematch() {
-  // P1だけが新しいゲームをセットアップする（競合防止）
-  if (myPlayerId !== 1) return
-
-  const answer = shuffle(COLORS).slice(0, 4).map(c => c.name)
-  await supabase.from('guesses').delete().eq('room_id', roomId)
-  await supabase.from('rooms').update({
-    answer,
-    status: 'playing',
-    current_player: 1,
-    winner: null,
-    rematch_p1: false,
-    rematch_p2: false,
-  }).eq('id', roomId)
-}
-
-// ===== ゲーム状態リセット（再戦時） =====
-async function resetForRematch() {
-  guesses = { 1: [], 2: [] }
-  workSlots = [null, null, null, null]
-  rematchRequested = false
-  document.getElementById('result-overlay').classList.add('hidden')
-  // DBから最新のルーム情報を取得（新しい answer を反映）
-  await loadRoomData()
-  renderAll()
 }
 
 // ===== Supabase Realtime 購読 =====
@@ -430,29 +363,13 @@ function subscribeRoom() {
     'postgres_changes',
     { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
     payload => {
-      const prevStatus = room?.status
       room = payload.new
       renderAll()
 
       if (room.status === 'finished') {
         setTimeout(showResult, 900)
       }
-
-      // 再戦：両者準備完了を検知
-      if (room.rematch_p1 && room.rematch_p2 && room.status === 'finished') {
-        startRematch()
-        return
-      }
-
-      // 再戦開始：playing に戻ったとき（P2側もリセット）
-      if (prevStatus === 'finished' && room.status === 'playing') {
-        resetForRematch()
-        showScreen('game')
-        showToast('🔄 再戦スタート！')
-        return
-      }
-
-      if (room.status === 'playing' && prevStatus !== 'playing') {
+      if (room.status === 'playing') {
         showScreen('game')
       }
     }
