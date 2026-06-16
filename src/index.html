@@ -36,6 +36,25 @@
   </div>
 </div>
 
+<!-- ===== 先後選択画面（P1用：待機） ===== -->
+<div id="screen-select-wait" class="screen hidden">
+  <div class="lobby-wrap">
+    <h2>⚔️ 順番を決めています</h2>
+    <p class="hint-text">相手が先行・後攻を選んでいます</p>
+    <p class="waiting-msg"><span class="dot-anim">しばらくお待ちください</span></p>
+  </div>
+</div>
+
+<!-- ===== 先後選択画面（P2用：選択） ===== -->
+<div id="screen-select" class="screen hidden">
+  <div class="lobby-wrap">
+    <h2>⚔️ 先行・後攻を選ぼう</h2>
+    <p class="hint-text">あなたが選択します</p>
+    <button class="btn primary big" id="select-first-btn">先行</button>
+    <button class="btn big" id="select-second-btn">後攻</button>
+  </div>
+</div>
+
 <!-- ===== ゲーム画面 ===== -->
 <div id="screen-game" class="screen hidden">
   <div class="wrap">

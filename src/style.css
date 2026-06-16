@@ -116,3 +116,9 @@ body{font-family:sans-serif;background:#2a2a2a;color:#eee;min-height:100vh;}
 /* rematch */
 .rematch-waiting{color:#aaa;font-size:13px;margin-top:4px;}
 #rematch-btn:disabled{opacity:0.5;cursor:default;}
+
+/* select screen */
+#screen-select .btn.big, #screen-select-wait .btn.big{
+  width:100%;padding:18px;font-size:15px;
+}
+#screen-select .btn.big:hover:not(:disabled){transform:scale(1.02);transition:transform 0.1s;}
