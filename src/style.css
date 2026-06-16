@@ -112,3 +112,7 @@ body{font-family:sans-serif;background:#2a2a2a;color:#eee;min-height:100vh;}
 
 /* player badge */
 .my-badge{color:#4ade80;font-weight:700;}
+
+/* rematch */
+.rematch-waiting{color:#aaa;font-size:13px;margin-top:4px;}
+#rematch-btn:disabled{opacity:0.5;cursor:default;}

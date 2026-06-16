@@ -24,6 +24,7 @@ let workSlots = [null, null, null, null]
 let channel = null
 let role = 'player' // 'player' | 'spectator'
 let hadTwoPlayers = false
+let rematchRequested = false
 
 // ===== SVG ヘルパー =====
 function svgM(c, sz = 40) {
@@ -324,7 +325,62 @@ function showResult() {
     ra.appendChild(d)
   })
 
+  // 再戦ボタン初期化
+  rematchRequested = false
+  const rematchBtn = document.getElementById('rematch-btn')
+  const rematchWaiting = document.getElementById('rematch-waiting')
+  rematchBtn.disabled = false
+  rematchBtn.textContent = '再戦する'
+  rematchWaiting.classList.add('hidden')
+
+  // 観戦者は再戦ボタン非表示
+  if (role === 'spectator') {
+    rematchBtn.classList.add('hidden')
+  } else {
+    rematchBtn.classList.remove('hidden')
+  }
+
   overlay.classList.remove('hidden')
+}
+
+// ===== 再戦リクエスト =====
+async function requestRematch() {
+  if (rematchRequested || role !== 'player' || !roomId) return
+  rematchRequested = true
+
+  const rematchBtn = document.getElementById('rematch-btn')
+  const rematchWaiting = document.getElementById('rematch-waiting')
+  rematchBtn.disabled = true
+  rematchBtn.textContent = '待機中...'
+  rematchWaiting.classList.remove('hidden')
+
+  const field = myPlayerId === 1 ? 'rematch_p1' : 'rematch_p2'
+  await supabase.from('rooms').update({ [field]: true }).eq('id', roomId)
+}
+
+// ===== 再戦リセット（P1が担当） =====
+async function resetForRematch() {
+  if (myPlayerId !== 1) return
+  const newAnswer = shuffle(COLORS).slice(0, 4).map(c => c.name)
+  await supabase.from('guesses').delete().eq('room_id', roomId)
+  await supabase.from('rooms').update({
+    answer: newAnswer,
+    status: 'playing',
+    current_player: 1,
+    winner: null,
+    rematch_p1: false,
+    rematch_p2: false,
+  }).eq('id', roomId)
+}
+
+// ===== ゲームリスタート（クライアント側） =====
+function restartGame() {
+  guesses = { 1: [], 2: [] }
+  workSlots = [null, null, null, null]
+  rematchRequested = false
+  document.getElementById('result-overlay').classList.add('hidden')
+  renderAll()
+  showToast('🔄 再戦開始！')
 }
 
 // ===== Supabase Realtime 購読 =====
@@ -362,15 +418,43 @@ function subscribeRoom() {
   channel.on(
     'postgres_changes',
     { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
-    payload => {
+    async payload => {
+      const prev = room
       room = payload.new
       renderAll()
 
-      if (room.status === 'finished') {
+      if (room.status === 'finished' && prev?.status !== 'finished') {
         setTimeout(showResult, 900)
       }
-      if (room.status === 'playing') {
+
+      // 両者が再戦リクエスト済み → P1がリセット実行
+      if (
+        room.status === 'finished' &&
+        room.rematch_p1 && room.rematch_p2
+      ) {
+        if (myPlayerId === 1) {
+          await resetForRematch()
+        }
+        return
+      }
+
+      // statusがplaying & 直前がfinished → 再戦開始
+      if (room.status === 'playing' && prev?.status === 'finished') {
+        restartGame()
+        return
+      }
+
+      if (room.status === 'playing' && prev?.status !== 'finished') {
         showScreen('game')
+      }
+
+      // 相手が再戦を押した通知
+      if (room.status === 'finished' && prev?.status === 'finished') {
+        const opponentField = myPlayerId === 1 ? 'rematch_p2' : 'rematch_p1'
+        const prevOpponent = prev?.[opponentField]
+        if (!prevOpponent && room[opponentField] && !rematchRequested) {
+          showToast('相手が再戦を希望しています！')
+        }
       }
     }
   )
@@ -525,6 +609,11 @@ document.getElementById('submit-btn').onclick = submitGuess
 document.getElementById('clear-btn').onclick = clearWork
 document.getElementById('leave-btn').onclick = async () => {
   if (!confirm('退出しますか？')) return
+  if (channel) await channel.untrack()
+  location.href = '/'
+}
+document.getElementById('rematch-btn').onclick = requestRematch
+document.getElementById('quit-btn').onclick = async () => {
   if (channel) await channel.untrack()
   location.href = '/'
 }
