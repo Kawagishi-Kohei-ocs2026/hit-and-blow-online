@@ -381,14 +381,21 @@ async function requestRematch() {
 async function resetForRematch() {
   if (myPlayerId !== 1) return
   const newAnswer = shuffle(COLORS).slice(0, 4).map(c => c.name)
+
+  // 先後を自動交代（player1_id ↔ player2_id を入れ替え）
+  const { data: r } = await supabase.from('rooms').select('player1_id, player2_id').eq('id', roomId).single()
+  if (!r) return
+
   await supabase.from('guesses').delete().eq('room_id', roomId)
   await supabase.from('rooms').update({
     answer: newAnswer,
-    status: 'selecting',
+    status: 'playing',
     current_player: 1,
     winner: null,
     rematch_p1: false,
     rematch_p2: false,
+    player1_id: r.player2_id,
+    player2_id: r.player1_id,
   }).eq('id', roomId)
 }
 
@@ -476,19 +483,14 @@ function subscribeRoom() {
         return
       }
 
-      // statusがselecting & 直前がfinished → 再戦の選択画面へ
-      if (room.status === 'selecting' && prev?.status === 'finished') {
-        guesses = { 1: [], 2: [] }
-        workSlots = [null, null, null, null]
-        rematchRequested = false
-        document.getElementById('result-overlay').classList.add('hidden')
-        // P2が先後を再選択、P1は待機
-        showScreen(myPlayerId === 2 ? 'select' : 'select-wait')
-        return
-      }
+      // statusがselecting & 直前がfinished → 再戦の選択画面へ（初回のみ）
+      // ※再戦時はselectingを経由しないのでこのブロックは到達しない
 
-      // statusがplaying & 直前がfinished → 直接再戦開始（selectingスキップ時の保険）
+      // statusがplaying & 直前がfinished → 再戦開始（先後自動交代済み）
       if (room.status === 'playing' && prev?.status === 'finished') {
+        const guestId = getGuestId()
+        if (room.player1_id === guestId) myPlayerId = 1
+        else if (room.player2_id === guestId) myPlayerId = 2
         restartGame()
         return
       }
