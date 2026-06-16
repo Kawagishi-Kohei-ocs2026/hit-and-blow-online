@@ -27,9 +27,13 @@
 <div id="screen-waiting" class="screen hidden">
   <div class="lobby-wrap">
     <h2>🔗 友達を招待しよう</h2>
-    <p class="hint-text">このURLを相手に送ってください</p>
+    <p class="hint-text">ルームIDまたはURLを相手に送ってください</p>
+    <div class="room-id-box" id="room-id-display"></div>
     <div class="url-box" id="share-url"></div>
-    <button class="btn" id="copy-btn">URLをコピー</button>
+    <div class="copy-btns">
+      <button class="btn primary" id="copy-id-btn">ルームIDをコピー</button>
+      <button class="btn" id="copy-btn">URLをコピー</button>
+    </div>
     <p class="waiting-msg" id="waiting-msg">
       <span class="dot-anim">相手の参加を待っています</span>
     </p>
@@ -50,8 +54,8 @@
   <div class="lobby-wrap">
     <h2>⚔️ 先行・後攻を選ぼう</h2>
     <p class="hint-text">あなたが選択します</p>
-    <button class="btn primary big" id="select-first-btn">先行</button>
-    <button class="btn big" id="select-second-btn">後攻</button>
+    <button class="btn primary big" id="select-first-btn">先行（1P）</button>
+    <button class="btn big" id="select-second-btn">後攻（2P）</button>
   </div>
 </div>
 

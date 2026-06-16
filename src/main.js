@@ -569,10 +569,15 @@ async function createRoom() {
   // 待機画面
   showScreen('waiting')
   const url = `${location.origin}${location.pathname}?room=${id}`
+  document.getElementById('room-id-display').textContent = id
   document.getElementById('share-url').textContent = url
+  document.getElementById('copy-id-btn').onclick = () => {
+    navigator.clipboard.writeText(id)
+    showToast('ルームIDをコピーしました！')
+  }
   document.getElementById('copy-btn').onclick = () => {
     navigator.clipboard.writeText(url)
-    showToast('コピーしました！')
+    showToast('URLをコピーしました！')
   }
 
   subscribeRoom()

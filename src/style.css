@@ -117,6 +117,15 @@ body{font-family:sans-serif;background:#2a2a2a;color:#eee;min-height:100vh;}
 .rematch-waiting{color:#aaa;font-size:13px;margin-top:4px;}
 #rematch-btn:disabled{opacity:0.5;cursor:default;}
 
+/* room id display */
+.room-id-box{
+  font-size:52px;font-weight:900;letter-spacing:0.18em;
+  color:#fff;text-align:center;padding:16px 8px 8px;
+  font-family:monospace;
+}
+.copy-btns{display:flex;gap:8px;width:100%;}
+.copy-btns .btn{flex:1;text-align:center;}
+
 /* select screen */
 #screen-select .btn.big, #screen-select-wait .btn.big{
   width:100%;padding:18px;font-size:15px;
