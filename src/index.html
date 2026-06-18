@@ -23,6 +23,16 @@
   </div>
 </div>
 
+<!-- ===== モード選択画面 ===== -->
+<div id="screen-mode" class="screen hidden">
+  <div class="lobby-wrap">
+    <h2>🎮 モードを選ぼう</h2>
+    <p class="hint-text">対戦のルールを選んでください</p>
+    <button class="btn primary big" id="mode-normal-btn">通常モード<br><span class="mode-sub">時間制限なし</span></button>
+    <button class="btn big" id="mode-timer-btn">⏱️ タイマーモード<br><span class="mode-sub">1ターン30秒</span></button>
+  </div>
+</div>
+
 <!-- ===== 待機画面 ===== -->
 <div id="screen-waiting" class="screen hidden">
   <div class="lobby-wrap">
@@ -69,6 +79,7 @@
     </div>
     <div class="turn-bar">
       <span class="turn-chip" id="turn-chip">読み込み中...</span>
+      <span class="timer-chip hidden" id="timer-chip">30</span>
     </div>
     <div class="board-area" id="board-area"></div>
     <div class="input-area" id="input-area">

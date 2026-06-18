@@ -26,6 +26,11 @@ let role = 'player' // 'player' | 'spectator'
 let hadTwoPlayers = false
 let rematchRequested = false
 
+// ===== タイマーモード =====
+const TURN_SECONDS = 30
+let turnTimerInterval = null
+let turnDeadline = null // このターンが終わる時刻（ms epoch）
+
 // ===== SVG ヘルパー =====
 function svgM(c, sz = 40) {
   const id = 'm' + Math.random().toString(36).slice(2, 8)
@@ -79,10 +84,10 @@ function evaluate(guess, ans) {
   const usedAns = [false, false, false, false]
   const usedGuess = [false, false, false, false]
   for (let i = 0; i < 4; i++) {
-    if (guess[i] === ans[i]) { hit++; usedAns[i] = true; usedGuess[i] = true }
+    if (guess[i] != null && guess[i] === ans[i]) { hit++; usedAns[i] = true; usedGuess[i] = true }
   }
   for (let i = 0; i < 4; i++) {
-    if (usedGuess[i]) continue
+    if (usedGuess[i] || guess[i] == null) continue
     for (let j = 0; j < 4; j++) {
       if (usedAns[j]) continue
       if (guess[i] === ans[j]) { blow++; usedAns[j] = true; break }
@@ -128,9 +133,10 @@ function renderBoard() {
     for (let row = 0; row < 4; row++) {
       const s = document.createElement('div')
       if (g) {
-        const c = COLORS.find(x => x.name === g.colors[row])
+        const name = g.colors[row]
+        const c = name ? COLORS.find(x => x.name === name) : null
         s.className = 'vslot'
-        s.innerHTML = svgM(c, 38)
+        s.innerHTML = c ? svgM(c, 38) : svgEmpty(38)
       } else if (isActive) {
         if (workSlots[row]) {
           const c = COLORS.find(x => x.name === workSlots[row])
@@ -242,6 +248,63 @@ function renderAll() {
   renderPalette()
   renderTurnChip()
   document.getElementById('submit-btn').disabled = workSlots.includes(null)
+  updateTurnTimer()
+}
+
+// ===== タイマー制御 =====
+function stopTurnTimer() {
+  if (turnTimerInterval) {
+    clearInterval(turnTimerInterval)
+    turnTimerInterval = null
+  }
+  turnDeadline = null
+  const chip = document.getElementById('timer-chip')
+  chip.classList.add('hidden')
+  chip.classList.remove('warn', 'danger')
+}
+
+function updateTurnTimer() {
+  const chip = document.getElementById('timer-chip')
+  const isTimerMode = room && room.mode === 'timer'
+  const isMyTurn = room && room.status === 'playing' && room.current_player === myPlayerId
+  const canPlay = role === 'player' && isMyTurn
+
+  if (!isTimerMode || !canPlay) {
+    stopTurnTimer()
+    return
+  }
+
+  // 既にこのターン用のタイマーが動いている場合は何もしない
+  if (turnTimerInterval) return
+
+  turnDeadline = Date.now() + TURN_SECONDS * 1000
+  chip.classList.remove('hidden')
+  tickTurnTimer()
+  turnTimerInterval = setInterval(tickTurnTimer, 250)
+}
+
+function tickTurnTimer() {
+  const chip = document.getElementById('timer-chip')
+  if (!turnDeadline) return
+  const remainMs = turnDeadline - Date.now()
+  const remainSec = Math.max(0, Math.ceil(remainMs / 1000))
+
+  chip.textContent = remainSec
+  chip.classList.remove('warn', 'danger')
+  if (remainSec <= 5) chip.classList.add('danger')
+  else if (remainSec <= 10) chip.classList.add('warn')
+
+  if (remainMs <= 0) {
+    stopTurnTimer()
+    autoSubmitOnTimeout()
+  }
+}
+
+// タイムアウト時：入力済みの色はそのまま、空きスロットは「色なし」として送信
+async function autoSubmitOnTimeout() {
+  if (role !== 'player') return
+  if (!room || room.status !== 'playing' || room.current_player !== myPlayerId) return
+  await submitGuess({ forceEmpty: true })
 }
 
 // ===== スロット操作 =====
@@ -265,9 +328,11 @@ function clearWork() {
 }
 
 // ===== 推測送信 =====
-async function submitGuess() {
+async function submitGuess(opts = {}) {
+  const forceEmpty = !!opts.forceEmpty
   if (role !== 'player') return
-  if (workSlots.includes(null) || !room || room.status !== 'playing') return
+  if (!forceEmpty && workSlots.includes(null)) return
+  if (!room || room.status !== 'playing') return
   if (room.current_player !== myPlayerId) return
 
   const guess = [...workSlots]
@@ -286,7 +351,11 @@ async function submitGuess() {
   if (gErr) { console.error(gErr); showToast('エラーが発生しました'); return }
 
   workSlots = [null, null, null, null]
-  showToast(r.hit === 4 ? `🎉 4ヒット！` : `${r.hit}ヒット  ${r.blow}ブロー`)
+  if (forceEmpty) {
+    showToast(r.hit === 4 ? `🎉 4ヒット！` : `⏱️ 時間切れ：${r.hit}ヒット  ${r.blow}ブロー`)
+  } else {
+    showToast(r.hit === 4 ? `🎉 4ヒット！` : `${r.hit}ヒット  ${r.blow}ブロー`)
+  }
 
   // ルーム状態更新
   const total = guesses[1].length + guesses[2].length + 1
@@ -404,6 +473,7 @@ function restartGame() {
   guesses = { 1: [], 2: [] }
   workSlots = [null, null, null, null]
   rematchRequested = false
+  stopTurnTimer()
   document.getElementById('result-overlay').classList.add('hidden')
   renderAll()
   showToast('🔄 再戦開始！')
@@ -548,7 +618,7 @@ async function loadRoomData() {
 }
 
 // ===== ルーム作成 =====
-async function createRoom() {
+async function createRoom(mode = 'normal') {
   const guestId = getGuestId()
   const id = nanoid()
   const answer = shuffle(COLORS).slice(0, 4).map(c => c.name)
@@ -559,12 +629,13 @@ async function createRoom() {
     status: 'waiting',
     current_player: 1,
     player1_id: guestId,
+    mode,
   })
   if (error) { console.error(error); showLobbyError('ルームの作成に失敗しました'); return }
 
   roomId = id
   myPlayerId = 1
-  room = { id, answer, status: 'waiting', current_player: 1 }
+  room = { id, answer, status: 'waiting', current_player: 1, mode }
 
   // 待機画面
   showScreen('waiting')
@@ -658,7 +729,10 @@ function init() {
 
   showScreen('lobby')
 
-  document.getElementById('create-btn').onclick = createRoom
+  document.getElementById('create-btn').onclick = () => showScreen('mode')
+
+  document.getElementById('mode-normal-btn').onclick = () => createRoom('normal')
+  document.getElementById('mode-timer-btn').onclick = () => createRoom('timer')
 
   document.getElementById('join-btn').onclick = () => {
     const v = document.getElementById('join-input').value.trim()
@@ -671,7 +745,7 @@ function init() {
 }
 
 // ===== イベントバインド（ゲーム画面） =====
-document.getElementById('submit-btn').onclick = submitGuess
+document.getElementById('submit-btn').onclick = () => submitGuess()
 document.getElementById('clear-btn').onclick = clearWork
 document.getElementById('leave-btn').onclick = async () => {
   if (!confirm('退出しますか？')) return

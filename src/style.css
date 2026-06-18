@@ -131,3 +131,23 @@ body{font-family:sans-serif;background:#2a2a2a;color:#eee;min-height:100vh;}
   width:100%;padding:18px;font-size:15px;
 }
 #screen-select .btn.big:hover:not(:disabled){transform:scale(1.02);transition:transform 0.1s;}
+
+/* mode select screen */
+#screen-mode .btn.big{
+  width:100%;padding:18px;font-size:15px;line-height:1.6;
+}
+#screen-mode .btn.big:hover:not(:disabled){transform:scale(1.02);transition:transform 0.1s;}
+.mode-sub{font-size:11px;color:#888;font-weight:400;}
+#screen-mode .btn.primary .mode-sub{color:#5ab4f7;opacity:0.8;}
+
+/* timer chip */
+.turn-bar{display:flex;align-items:center;justify-content:center;gap:8px;}
+.timer-chip{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:34px;height:30px;padding:0 10px;border-radius:99px;
+  border:1.5px solid #888;background:#2a2a2a;color:#ccc;
+  font-size:13px;font-weight:700;font-family:monospace;
+}
+.timer-chip.warn{border-color:#f5a623;color:#f5a623;background:#2a2210;}
+.timer-chip.danger{border-color:#f66;color:#f66;background:#2a1414;animation:pulse 0.6s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
