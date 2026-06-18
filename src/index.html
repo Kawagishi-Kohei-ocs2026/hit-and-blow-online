@@ -29,7 +29,25 @@
     <h2>🎮 モードを選ぼう</h2>
     <p class="hint-text">対戦のルールを選んでください</p>
     <button class="btn primary big" id="mode-normal-btn">通常モード<br><span class="mode-sub">時間制限なし</span></button>
-    <button class="btn big" id="mode-timer-btn">⏱️ タイマーモード<br><span class="mode-sub">1ターン30秒</span></button>
+    <button class="btn big" id="mode-timer-btn">⏱️ タイマーモード<br><span class="mode-sub">1ターンの時間制限あり</span></button>
+  </div>
+</div>
+
+<!-- ===== タイマー秒数設定画面 ===== -->
+<div id="screen-timer-config" class="screen hidden">
+  <div class="lobby-wrap">
+    <h2>⏱️ 制限時間を決めよう</h2>
+    <p class="hint-text">1ターンあたりの制限時間（秒）</p>
+    <div class="timer-config-box">
+      <div class="timer-config-value" id="timer-config-value">30</div>
+      <input type="range" id="timer-config-slider" class="timer-config-slider" min="1" max="60" step="1" value="30">
+      <div class="timer-config-row">
+        <input type="number" id="timer-config-number" class="timer-config-number" min="1" max="60" step="1" value="30">
+        <span class="timer-config-unit">秒</span>
+      </div>
+    </div>
+    <button class="btn primary big" id="timer-config-confirm-btn">この時間でルームを作成</button>
+    <button class="btn" id="timer-config-back-btn">戻る</button>
   </div>
 </div>
 

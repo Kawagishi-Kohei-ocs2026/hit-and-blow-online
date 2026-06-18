@@ -27,7 +27,7 @@ let hadTwoPlayers = false
 let rematchRequested = false
 
 // ===== タイマーモード =====
-const TURN_SECONDS = 30
+const DEFAULT_TURN_SECONDS = 30 // room.turn_secondsが無い場合のフォールバック
 let turnTimerInterval = null
 let turnDeadline = null // このターンが終わる時刻（ms epoch）
 
@@ -277,7 +277,8 @@ function updateTurnTimer() {
   // 既にこのターン用のタイマーが動いている場合は何もしない
   if (turnTimerInterval) return
 
-  turnDeadline = Date.now() + TURN_SECONDS * 1000
+  const seconds = room.turn_seconds || DEFAULT_TURN_SECONDS
+  turnDeadline = Date.now() + seconds * 1000
   chip.classList.remove('hidden')
   tickTurnTimer()
   turnTimerInterval = setInterval(tickTurnTimer, 250)
@@ -618,24 +619,27 @@ async function loadRoomData() {
 }
 
 // ===== ルーム作成 =====
-async function createRoom(mode = 'normal') {
+async function createRoom(mode = 'normal', turnSeconds = DEFAULT_TURN_SECONDS) {
   const guestId = getGuestId()
   const id = nanoid()
   const answer = shuffle(COLORS).slice(0, 4).map(c => c.name)
 
-  const { error } = await supabase.from('rooms').insert({
+  const insertRow = {
     id,
     answer,
     status: 'waiting',
     current_player: 1,
     player1_id: guestId,
     mode,
-  })
+  }
+  if (mode === 'timer') insertRow.turn_seconds = turnSeconds
+
+  const { error } = await supabase.from('rooms').insert(insertRow)
   if (error) { console.error(error); showLobbyError('ルームの作成に失敗しました'); return }
 
   roomId = id
   myPlayerId = 1
-  room = { id, answer, status: 'waiting', current_player: 1, mode }
+  room = { id, answer, status: 'waiting', current_player: 1, mode, turn_seconds: insertRow.turn_seconds }
 
   // 待機画面
   showScreen('waiting')
@@ -732,7 +736,38 @@ function init() {
   document.getElementById('create-btn').onclick = () => showScreen('mode')
 
   document.getElementById('mode-normal-btn').onclick = () => createRoom('normal')
-  document.getElementById('mode-timer-btn').onclick = () => createRoom('timer')
+  document.getElementById('mode-timer-btn').onclick = () => showScreen('timer-config')
+
+  // ===== タイマー秒数設定画面 =====
+  const slider = document.getElementById('timer-config-slider')
+  const number = document.getElementById('timer-config-number')
+  const valueDisplay = document.getElementById('timer-config-value')
+
+  const clampSeconds = v => Math.min(60, Math.max(1, Math.round(v) || 1))
+
+  slider.addEventListener('input', () => {
+    const v = clampSeconds(slider.value)
+    number.value = v
+    valueDisplay.textContent = v
+  })
+  number.addEventListener('input', () => {
+    if (number.value === '') { valueDisplay.textContent = ''; return }
+    const v = clampSeconds(number.value)
+    slider.value = v
+    valueDisplay.textContent = v
+  })
+  number.addEventListener('blur', () => {
+    const v = clampSeconds(number.value || slider.value)
+    number.value = v
+    slider.value = v
+    valueDisplay.textContent = v
+  })
+
+  document.getElementById('timer-config-confirm-btn').onclick = () => {
+    const v = clampSeconds(number.value || slider.value)
+    createRoom('timer', v)
+  }
+  document.getElementById('timer-config-back-btn').onclick = () => showScreen('mode')
 
   document.getElementById('join-btn').onclick = () => {
     const v = document.getElementById('join-input').value.trim()
