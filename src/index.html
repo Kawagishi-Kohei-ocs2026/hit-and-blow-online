@@ -27,12 +27,35 @@
 <div id="screen-waiting" class="screen hidden">
   <div class="lobby-wrap">
     <h2>🔗 友達を招待しよう</h2>
-    <p class="hint-text">このURLを相手に送ってください</p>
+    <p class="hint-text">ルームIDまたはURLを相手に送ってください</p>
+    <div class="room-id-box" id="room-id-display"></div>
     <div class="url-box" id="share-url"></div>
-    <button class="btn" id="copy-btn">URLをコピー</button>
+    <div class="copy-btns">
+      <button class="btn primary" id="copy-id-btn">ルームIDをコピー</button>
+      <button class="btn" id="copy-btn">URLをコピー</button>
+    </div>
     <p class="waiting-msg" id="waiting-msg">
       <span class="dot-anim">相手の参加を待っています</span>
     </p>
+  </div>
+</div>
+
+<!-- ===== 先後選択画面（P1用：待機） ===== -->
+<div id="screen-select-wait" class="screen hidden">
+  <div class="lobby-wrap">
+    <h2>⚔️ 順番を決めています</h2>
+    <p class="hint-text">相手が先行・後攻を選んでいます</p>
+    <p class="waiting-msg"><span class="dot-anim">しばらくお待ちください</span></p>
+  </div>
+</div>
+
+<!-- ===== 先後選択画面（P2用：選択） ===== -->
+<div id="screen-select" class="screen hidden">
+  <div class="lobby-wrap">
+    <h2>⚔️ 先行・後攻を選ぼう</h2>
+    <p class="hint-text">あなたが選択します</p>
+    <button class="btn primary big" id="select-first-btn">先行（1P）</button>
+    <button class="btn big" id="select-second-btn">後攻（2P）</button>
   </div>
 </div>
 
@@ -65,7 +88,11 @@
     <h3 id="res-title"></h3>
     <p id="res-sub"></p>
     <div class="ans-preview" id="res-ans"></div>
-    <button class="btn primary" onclick="location.href='/'">もう一度遊ぶ</button>
+    <button class="btn primary" id="rematch-btn">再戦する</button>
+    <p class="rematch-waiting hidden" id="rematch-waiting">
+      <span class="dot-anim">相手の返答を待っています</span>
+    </p>
+    <button class="btn" id="quit-btn">ロビーに戻る</button>
   </div>
 </div>
 

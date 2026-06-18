@@ -24,6 +24,7 @@ let workSlots = [null, null, null, null]
 let channel = null
 let role = 'player' // 'player' | 'spectator'
 let hadTwoPlayers = false
+let rematchRequested = false
 
 // ===== SVG ヘルパー =====
 function svgM(c, sz = 40) {
@@ -300,7 +301,26 @@ async function submitGuess() {
   }
 }
 
-// ===== 結果表示 =====
+// ===== 先後選択（P2が実行） =====
+async function selectOrder(goFirst) {
+  if (myPlayerId !== 2 || !roomId) return
+
+  // goFirst=true → P2が先行(player1)になる → player1_id, player2_idを入れ替え
+  const guestId = getGuestId()
+  const { data: r } = await supabase.from('rooms').select('player1_id, player2_id').eq('id', roomId).single()
+  if (!r) return
+
+  const update = goFirst
+    ? { player1_id: guestId, player2_id: r.player1_id, current_player: 1, status: 'playing' }
+    : { status: 'playing', current_player: 1 }
+
+  await supabase.from('rooms').update(update).eq('id', roomId)
+
+  // 自分のplayerIdを再設定
+  myPlayerId = goFirst ? 1 : 2
+}
+
+
 function showResult() {
   if (!room) return
   const overlay = document.getElementById('result-overlay')
@@ -324,7 +344,69 @@ function showResult() {
     ra.appendChild(d)
   })
 
+  // 再戦ボタン初期化
+  rematchRequested = false
+  const rematchBtn = document.getElementById('rematch-btn')
+  const rematchWaiting = document.getElementById('rematch-waiting')
+  rematchBtn.disabled = false
+  rematchBtn.textContent = '再戦する'
+  rematchWaiting.classList.add('hidden')
+
+  // 観戦者は再戦ボタン非表示
+  if (role === 'spectator') {
+    rematchBtn.classList.add('hidden')
+  } else {
+    rematchBtn.classList.remove('hidden')
+  }
+
   overlay.classList.remove('hidden')
+}
+
+// ===== 再戦リクエスト =====
+async function requestRematch() {
+  if (rematchRequested || role !== 'player' || !roomId) return
+  rematchRequested = true
+
+  const rematchBtn = document.getElementById('rematch-btn')
+  const rematchWaiting = document.getElementById('rematch-waiting')
+  rematchBtn.disabled = true
+  rematchBtn.textContent = '待機中...'
+  rematchWaiting.classList.remove('hidden')
+
+  const field = myPlayerId === 1 ? 'rematch_p1' : 'rematch_p2'
+  await supabase.from('rooms').update({ [field]: true }).eq('id', roomId)
+}
+
+// ===== 再戦リセット（P1が担当） =====
+async function resetForRematch() {
+  if (myPlayerId !== 1) return
+  const newAnswer = shuffle(COLORS).slice(0, 4).map(c => c.name)
+
+  // 先後を自動交代（player1_id ↔ player2_id を入れ替え）
+  const { data: r } = await supabase.from('rooms').select('player1_id, player2_id').eq('id', roomId).single()
+  if (!r) return
+
+  await supabase.from('guesses').delete().eq('room_id', roomId)
+  await supabase.from('rooms').update({
+    answer: newAnswer,
+    status: 'playing',
+    current_player: 1,
+    winner: null,
+    rematch_p1: false,
+    rematch_p2: false,
+    player1_id: r.player2_id,
+    player2_id: r.player1_id,
+  }).eq('id', roomId)
+}
+
+// ===== ゲームリスタート（クライアント側） =====
+function restartGame() {
+  guesses = { 1: [], 2: [] }
+  workSlots = [null, null, null, null]
+  rematchRequested = false
+  document.getElementById('result-overlay').classList.add('hidden')
+  renderAll()
+  showToast('🔄 再戦開始！')
 }
 
 // ===== Supabase Realtime 購読 =====
@@ -362,15 +444,68 @@ function subscribeRoom() {
   channel.on(
     'postgres_changes',
     { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
-    payload => {
+    async payload => {
+      const prev = room
       room = payload.new
       renderAll()
 
-      if (room.status === 'finished') {
+      if (room.status === 'finished' && prev?.status !== 'finished') {
         setTimeout(showResult, 900)
       }
-      if (room.status === 'playing') {
+
+      // selecting → 選択画面表示
+      if (room.status === 'selecting' && prev?.status === 'waiting') {
+        if (role === 'player') {
+          showScreen(myPlayerId === 2 ? 'select' : 'select-wait')
+        }
+        return
+      }
+
+      // selecting → playing（P1は自分のIDを再確認してからゲームへ）
+      if (room.status === 'playing' && prev?.status === 'selecting') {
+        const guestId = getGuestId()
+        // player1_idが変わった可能性があるので再確認
+        if (room.player1_id === guestId) myPlayerId = 1
+        else if (room.player2_id === guestId) myPlayerId = 2
         showScreen('game')
+        renderAll()
+        return
+      }
+
+      // 両者が再戦リクエスト済み → P1がリセット実行
+      if (
+        room.status === 'finished' &&
+        room.rematch_p1 && room.rematch_p2
+      ) {
+        if (myPlayerId === 1) {
+          await resetForRematch()
+        }
+        return
+      }
+
+      // statusがselecting & 直前がfinished → 再戦の選択画面へ（初回のみ）
+      // ※再戦時はselectingを経由しないのでこのブロックは到達しない
+
+      // statusがplaying & 直前がfinished → 再戦開始（先後自動交代済み）
+      if (room.status === 'playing' && prev?.status === 'finished') {
+        const guestId = getGuestId()
+        if (room.player1_id === guestId) myPlayerId = 1
+        else if (room.player2_id === guestId) myPlayerId = 2
+        restartGame()
+        return
+      }
+
+      if (room.status === 'playing' && prev?.status !== 'finished') {
+        showScreen('game')
+      }
+
+      // 相手が再戦を押した通知
+      if (room.status === 'finished' && prev?.status === 'finished') {
+        const opponentField = myPlayerId === 1 ? 'rematch_p2' : 'rematch_p1'
+        const prevOpponent = prev?.[opponentField]
+        if (!prevOpponent && room[opponentField] && !rematchRequested) {
+          showToast('相手が再戦を希望しています！')
+        }
       }
     }
   )
@@ -434,10 +569,15 @@ async function createRoom() {
   // 待機画面
   showScreen('waiting')
   const url = `${location.origin}${location.pathname}?room=${id}`
+  document.getElementById('room-id-display').textContent = id
   document.getElementById('share-url').textContent = url
+  document.getElementById('copy-id-btn').onclick = () => {
+    navigator.clipboard.writeText(id)
+    showToast('ルームIDをコピーしました！')
+  }
   document.getElementById('copy-btn').onclick = () => {
     navigator.clipboard.writeText(url)
-    showToast('コピーしました！')
+    showToast('URLをコピーしました！')
   }
 
   subscribeRoom()
@@ -467,12 +607,12 @@ async function joinRoom(id) {
     myPlayerId = 2
     role = 'player'
   } else if (!r.player2_id) {
-    // 2人目として参加
+    // 2人目として参加 → 先後選択フェーズへ
     myPlayerId = 2
     role = 'player'
     const { error } = await supabase.from('rooms').update({
       player2_id: guestId,
-      status: 'playing',
+      status: 'selecting',
     }).eq('id', roomId).eq('status', 'waiting')
     if (error) { showLobbyError('参加に失敗しました'); return }
   } else {
@@ -482,13 +622,23 @@ async function joinRoom(id) {
   }
 
   await loadRoomData()
-  showScreen('game')
-  renderAll()
-  subscribeRoom()
 
   if (role === 'spectator') {
+    showScreen('game')
+    renderAll()
     showToast('👀 観戦モードで参加しています')
+  } else if (room.status === 'selecting') {
+    // P2なら選択画面、P1なら待機画面
+    showScreen(myPlayerId === 2 ? 'select' : 'select-wait')
+  } else if (room.status === 'playing' || room.status === 'finished') {
+    showScreen('game')
+    renderAll()
+  } else {
+    showScreen('waiting')
+    renderAll()
   }
+
+  subscribeRoom()
 }
 
 function showLobbyError(msg) {
@@ -528,5 +678,12 @@ document.getElementById('leave-btn').onclick = async () => {
   if (channel) await channel.untrack()
   location.href = '/'
 }
+document.getElementById('rematch-btn').onclick = requestRematch
+document.getElementById('quit-btn').onclick = async () => {
+  if (channel) await channel.untrack()
+  location.href = '/'
+}
+document.getElementById('select-first-btn').onclick = () => selectOrder(true)
+document.getElementById('select-second-btn').onclick = () => selectOrder(false)
 
 init()
